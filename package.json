@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx backend/server.ts",
-    "build": "vite build",
-    "preview": "vite preview",
+    "build": "cd frontend && vite build",
+    "preview": "cd frontend && vite preview",
     "clean": "rm -rf frontend/dist",
     "lint": "cd frontend && tsc --noEmit"
   },
