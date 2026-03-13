@@ -1,0 +1,9 @@
+{
+  "name": "NeoConnect",
+  "description": "A staff feedback and complaint management platform for transparency and accountability.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

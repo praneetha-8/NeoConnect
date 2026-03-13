@@ -1,0 +1,111 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Application user with role and department",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["staff", "secretariat", "case_manager", "admin"] },
+        "department": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Case": {
+      "title": "Case",
+      "description": "A feedback or complaint case",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "category": { "type": "string", "enum": ["Safety", "Policy", "Facilities", "HR", "Other"] },
+        "department": { "type": "string" },
+        "location": { "type": "string" },
+        "severity": { "type": "string", "enum": ["Low", "Medium", "High"] },
+        "anonymous": { "type": "boolean" },
+        "submitterUid": { "type": "string" },
+        "submitterName": { "type": "string" },
+        "status": { "type": "string", "enum": ["new", "assigned", "in_progress", "pending", "resolved", "escalated"] },
+        "caseManagerUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "lastResponseAt": { "type": "string", "format": "date-time" },
+        "description": { "type": "string" },
+        "fileUrl": { "type": "string" }
+      },
+      "required": ["id", "category", "department", "severity", "status", "createdAt"]
+    },
+    "Poll": {
+      "title": "Poll",
+      "description": "A feedback poll",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "question": { "type": "string" },
+        "options": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "question", "options", "createdAt"]
+    },
+    "Vote": {
+      "title": "Vote",
+      "description": "A vote on a poll",
+      "type": "object",
+      "properties": {
+        "pollId": { "type": "string" },
+        "userUid": { "type": "string" },
+        "optionIndex": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["pollId", "userUid", "optionIndex", "createdAt"]
+    },
+    "QuarterlyDigest": {
+      "title": "QuarterlyDigest",
+      "description": "Summary of resolved cases",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "content", "createdAt"]
+    },
+    "Impact": {
+      "title": "Impact",
+      "description": "Tracking real changes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "raised": { "type": "string" },
+        "action": { "type": "string" },
+        "change": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "raised", "action", "change", "createdAt"]
+    },
+    "Minute": {
+      "title": "Minute",
+      "description": "Meeting minutes archive",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "fileUrl", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": { "schema": "User", "description": "User profiles" },
+    "/cases/{caseId}": { "schema": "Case", "description": "Feedback cases" },
+    "/polls/{pollId}": { "schema": "Poll", "description": "Polls created by secretariat" },
+    "/votes/{voteId}": { "schema": "Vote", "description": "Poll votes" },
+    "/digests/{digestId}": { "schema": "QuarterlyDigest", "description": "Quarterly digests" },
+    "/impacts/{impactId}": { "schema": "Impact", "description": "Impact tracking" },
+    "/minutes/{minuteId}": { "schema": "Minute", "description": "Meeting minutes" }
+  }
+}

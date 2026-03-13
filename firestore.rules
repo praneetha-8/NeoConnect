@@ -1,0 +1,168 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required, 20-128 chars) - User's unique ID
+    //   - email: string (required, valid email) - User's email address (PII)
+    //   - name: string (required, 1-100 chars) - User's full name
+    //   - role: string (required, enum: ['staff', 'secretariat', 'case_manager', 'admin'])
+    //   - department: string (required, 1-100 chars)
+    //
+    // Collection: cases
+    // Document ID: auto-generated
+    // Fields:
+    //   - id: string (required, NEO-YYYY-001 format)
+    //   - category: string (required, enum: ['Safety', 'Policy', 'Facilities', 'HR', 'Other'])
+    //   - department: string (required, 1-100 chars)
+    //   - location: string (required, 1-100 chars)
+    //   - severity: string (required, enum: ['Low', 'Medium', 'High'])
+    //   - description: string (required, 1-5000 chars)
+    //   - anonymous: bool (required)
+    //   - fileUrl: string (optional, URL)
+    //   - submitterUid: string (required, matches auth.uid)
+    //   - submitterName: string (required, 1-100 chars)
+    //   - status: string (required, enum: ['new', 'assigned', 'in_progress', 'pending', 'resolved', 'escalated'])
+    //   - caseManagerUid: string (optional, 20-128 chars)
+    //   - createdAt: string (required, ISO 8601)
+    //   - updatedAt: string (required, ISO 8601)
+    //   - lastResponseAt: string (optional, ISO 8601)
+    //   - notes: string (optional, 0-5000 chars)
+    //
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    function hasRole(role) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') || 
+        (request.auth.token.email == "bolneti_praneetha@srmap.edu.in" && request.auth.token.email_verified == true)
+      );
+    }
+    
+    function isSecretariat() {
+      return isAdmin() || hasRole('secretariat');
+    }
+    
+    function isCaseManager() {
+      return isSecretariat() || hasRole('case_manager');
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'name', 'role', 'department']) &&
+             data.uid == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.email is string && isValidEmail(data.email) &&
+             data.role in ['staff', 'secretariat', 'case_manager', 'admin'] &&
+             data.department is string && data.department.size() <= 100;
+    }
+
+    function isValidCase(data) {
+      return data.keys().hasAll(['id', 'category', 'department', 'location', 'severity', 'description', 'anonymous', 'submitterUid', 'submitterName', 'status', 'createdAt', 'updatedAt']) &&
+             data.id is string && data.id.size() <= 20 &&
+             data.category in ['Safety', 'Policy', 'Facilities', 'HR', 'Other'] &&
+             data.department is string && data.department.size() <= 100 &&
+             data.location is string && data.location.size() <= 100 &&
+             data.severity in ['Low', 'Medium', 'High'] &&
+             data.description is string && data.description.size() <= 5000 &&
+             data.anonymous is bool &&
+             data.submitterUid == request.auth.uid &&
+             data.submitterName is string && data.submitterName.size() <= 100 &&
+             data.status in ['new', 'assigned', 'in_progress', 'pending', 'resolved', 'escalated'] &&
+             (!('fileUrl' in data) || isValidUrl(data.fileUrl)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 5000));
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /users/{uid} {
+      // PII Protection: Only owner or management can read full profile
+      allow read: if isOwner(uid) || isSecretariat();
+      // Only staff role can be self-assigned on creation
+      allow create: if isOwner(uid) && isValidUser(request.resource.data) && request.resource.data.role == 'staff';
+      // Role can only be changed by admin
+      allow update: if isValidUser(request.resource.data) && (
+        (isOwner(uid) && request.resource.data.role == resource.data.role) || 
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /cases/{caseId} {
+      allow read: if isAuthenticated() && (
+        isCaseManager() || 
+        resource.data.submitterUid == request.auth.uid ||
+        (resource.data.anonymous == false && resource.data.status == 'resolved') // Publicly visible if resolved and not anonymous
+      );
+      allow create: if isAuthenticated() && isValidCase(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (isSecretariat() && isValidCase(request.resource.data)) || 
+        (isCaseManager() && resource.data.caseManagerUid == request.auth.uid && isValidCase(request.resource.data)) ||
+        (isOwner(resource.data.submitterUid) && 
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['description', 'fileUrl', 'updatedAt']) && 
+         isValidCase(request.resource.data))
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /polls/{pollId} {
+      allow read: if isAuthenticated();
+      allow create: if isSecretariat() && request.resource.data.keys().hasAll(['question', 'options', 'createdAt', 'createdBy']) &&
+                    request.resource.data.question is string && request.resource.data.question.size() <= 500 &&
+                    request.resource.data.options is list && request.resource.data.options.size() <= 10;
+      allow update, delete: if isSecretariat();
+    }
+
+    match /votes/{voteId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+                    request.resource.data.userUid == request.auth.uid &&
+                    request.resource.data.keys().hasAll(['pollId', 'userUid', 'optionIndex', 'createdAt']) &&
+                    request.resource.data.optionIndex is int;
+    }
+
+    match /digests/{digestId} {
+      allow read: if isAuthenticated();
+      allow write: if isSecretariat();
+    }
+
+    match /impacts/{impactId} {
+      allow read: if isAuthenticated();
+      allow write: if isSecretariat();
+    }
+
+    match /minutes/{minuteId} {
+      allow read: if isAuthenticated();
+      allow write: if isSecretariat();
+    }
+  }
+}
